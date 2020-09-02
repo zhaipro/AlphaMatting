@@ -2,14 +2,24 @@
 #define SHAREDMSTTING_H
 
 #include <iostream>
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
 #include <cmath>
 #include <vector>
-//#include <cv.h>
-//#include <highgui.h>
 
 using namespace std;
+
+class Point {
+public:
+    int x, y;
+    Point();
+    Point(int _x, int _y);
+};
+
+class Scalar {
+public:
+    double val[3];
+    Scalar();
+    Scalar(double b, double g, double r);
+};
 
 struct labelPoint
 {
@@ -20,66 +30,57 @@ struct labelPoint
 
 struct Tuple
 {
-    cv::Scalar f;
-    cv::Scalar b;
+    Scalar f;
+    Scalar b;
     double   sigmaf;
     double   sigmab;
 
     int flag;
-
 };
 
 struct Ftuple
 {
-    cv::Scalar f;
-    cv::Scalar b;
+    Scalar f;
+    Scalar b;
     double   alphar;
     double   confidence;
 };
 
-/*程序中认定cv::Point中 x为行，y为列，可能错误，但对程序结果没有影响*/
+/*程序中认定Point中 x为行，y为列，可能错误，但对程序结果没有影响*/
 class SharedMatting
 {
 public:
     SharedMatting();
     ~SharedMatting();
 
-    void loadImage(char * filename);
-    void loadTrimap(char * filename);
+    void loadImage(unsigned char *_data, int64_t w, int64_t h);
+    void loadTrimap(unsigned char *data);
     void expandKnown();
-    void sample(cv::Point p, vector<cv::Point>& f, vector<cv::Point>& b);
+    void sample(Point p, vector<Point>& f, vector<Point>& b);
     void gathering();
-    void refineSample();
-    void localSmooth();
-    void solveAlpha();
-    void save(char * filename);
-    void Sample(vector<vector<cv::Point> > &F, vector<vector<cv::Point> > &B);
-    void getMatte();
+    void refineSample(unsigned char *alpha);
+    void localSmooth(unsigned char *alpha);
+    void solveAlpha(unsigned char *alpha);
+    void Sample(vector<vector<Point> > &F, vector<vector<Point> > &B);
     void release();
 
-    double mP(int i, int j, cv::Scalar f, cv::Scalar b);
-    double nP(int i, int j, cv::Scalar f, cv::Scalar b);
+    double mP(int i, int j, Scalar f, Scalar b);
+    double nP(int i, int j, Scalar f, Scalar b);
     double eP(int i1, int j1, int i2, int j2);
-    double pfP(cv::Point p, vector<cv::Point>& f, vector<cv::Point>& b);
-    double aP(int i, int j, double pf, cv::Scalar f, cv::Scalar b);
-    double gP(cv::Point p, cv::Point fp, cv::Point bp, double pf);
-    double gP(cv::Point p, cv::Point fp, cv::Point bp, double dpf, double pf);
-    double dP(cv::Point s, cv::Point d);
-    double sigma2(cv::Point p);
-    double distanceColor2(cv::Scalar cs1, cv::Scalar cs2);
-    double comalpha(cv::Scalar c, cv::Scalar f, cv::Scalar b);
-
-
+    double pfP(Point p, vector<Point>& f, vector<Point>& b);
+    double aP(int i, int j, double pf, Scalar f, Scalar b);
+    double gP(Point p, Point fp, Point bp, double pf);
+    double gP(Point p, Point fp, Point bp, double dpf, double pf);
+    double dP(Point s, Point d);
+    double sigma2(Point p);
+    double distanceColor2(Scalar cs1, Scalar cs2);
+    double comalpha(Scalar c, Scalar f, Scalar b);
 
 private:
-//    IplImage * pImg;
-//    IplImage * trimap;
-//    IplImage * matte;
-    cv::Mat pImg;
-    cv::Mat trimap;
-    cv::Mat matte;
+    unsigned char *pImg;
+    unsigned char *trimap;
 
-    vector<cv::Point> uT;
+    vector<Point> uT;
     vector<struct Tuple> tuples;
     vector<struct Ftuple> ftuples;
 
@@ -87,17 +88,12 @@ private:
     int width;
     int kI;
     int kG;
-    int ** unknownIndex;//Unknown的索引信息；
-    int ** tri;
-    int ** alpha;
+    int * unknownIndex;//Unknown的索引信息；
     double kC;
 
     int step;
     int channels;
-    uchar* data;
-
+    uint8_t* data;
 };
-
-
 
 #endif

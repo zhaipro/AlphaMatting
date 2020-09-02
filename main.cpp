@@ -10,22 +10,15 @@ using namespace std;
 
 int main()
 {
-    char fileAddr[64] = {0};
+    SharedMatting sm;
 
-    for (int n = 1; n < 28; ++n) {
-        SharedMatting sm;
+    sm.loadImage("input.png");
 
-        sprintf(fileAddr, "input/GT%d%d.png", n/10, n%10);
-        sm.loadImage(fileAddr);
+    sm.loadTrimap("trimap.png");
 
-        sprintf(fileAddr, "trimap/trimap1/GT%d%d.png", n/10, n%10);
-        sm.loadTrimap(fileAddr);
+    sm.solveAlpha();
 
-        sm.solveAlpha();
-
-        sprintf(fileAddr, "result/GT%d%d.png", n/10, n%10);
-        sm.save(fileAddr);
-    }
+    sm.save("result.png");
 
     return 0;
 }
