@@ -20,8 +20,7 @@ static PyObject* py_solve_alpha(PyObject *self, PyObject *args)
         return NULL;
 
     SharedMatting sm;
-    sm.loadImage(im->data, im->dimensions[1], im->dimensions[0]);
-    sm.loadTrimap(trimap->data);
+    sm.loadImage(im->data, trimap->data, im->dimensions[1], im->dimensions[0]);
     sm.solveAlpha(result->data);
 
     Py_RETURN_NONE;

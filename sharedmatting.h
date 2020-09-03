@@ -10,22 +10,16 @@ using namespace std;
 class Point {
 public:
     int x, y;
-    Point();
-    Point(int _x, int _y);
+    Point(int _x=0, int _y=0);
 };
 
 class Scalar {
 public:
     double val[3];
-    Scalar();
-    Scalar(double b, double g, double r);
-};
-
-struct labelPoint
-{
-    int x;
-    int y;
-    int label;
+    Scalar(double b=0, double g=0, double r=0);
+    Scalar(uint8_t *bgr);
+    void operator += (const Scalar &a);
+    void operator /= (double a);
 };
 
 struct Tuple
@@ -53,15 +47,13 @@ public:
     SharedMatting();
     ~SharedMatting();
 
-    void loadImage(unsigned char *_data, int64_t w, int64_t h);
-    void loadTrimap(unsigned char *data);
-    void expandKnown();
+    void loadImage(unsigned char *im, unsigned char *trimap, int64_t w, int64_t h);
+    void expandKnown(unsigned char *alpha);
     void sample(Point p, vector<Point>& f, vector<Point>& b);
     void gathering();
     void refineSample(unsigned char *alpha);
     void localSmooth(unsigned char *alpha);
     void solveAlpha(unsigned char *alpha);
-    void Sample(vector<vector<Point> > &F, vector<vector<Point> > &B);
     void release();
 
     double mP(int i, int j, Scalar f, Scalar b);
@@ -70,17 +62,14 @@ public:
     double pfP(Point p, vector<Point>& f, vector<Point>& b);
     double aP(int i, int j, double pf, Scalar f, Scalar b);
     double gP(Point p, Point fp, Point bp, double pf);
-    double gP(Point p, Point fp, Point bp, double dpf, double pf);
     double dP(Point s, Point d);
     double sigma2(Point p);
     double distanceColor2(Scalar cs1, Scalar cs2);
     double comalpha(Scalar c, Scalar f, Scalar b);
 
 private:
-    unsigned char *pImg;
-    unsigned char *trimap;
+    unsigned char *m_trimap;
 
-    vector<Point> uT;
     vector<struct Tuple> tuples;
     vector<struct Ftuple> ftuples;
 

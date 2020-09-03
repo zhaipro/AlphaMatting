@@ -9,4 +9,5 @@ if __name__ == '__main__':
     trimap = cv2.imread('trimap.png', cv2.IMREAD_GRAYSCALE)
     result = np.zeros(trimap.shape, dtype='uint8')
     sharedmatting.solve_alpha(im, trimap, result)
-    cv2.imwrite('a.png', result)
+    cv2.imshow('a.png', result)
+    cv2.waitKey()

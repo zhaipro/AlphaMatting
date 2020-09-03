@@ -1,3 +1,5 @@
+// https://www.inf.ufrgs.br/~eslgastal/SharedMatting/
+// https://blog.csdn.net/gzj2013/article/details/82685389
 #include "sharedmatting.h"
 #include <time.h>
 
@@ -15,19 +17,8 @@ double min(double a, double b)
     return a < b?a:b;
 }
 
-Point::Point(){x = 0;y=0;}
-Point::Point(int _x, int _y)
-{
-    x = _x;
-    y = _y;
-}
+Point::Point(int _x, int _y):x(_x),y(_y){}
 
-Scalar::Scalar()
-{
-    val[0] = 0;
-    val[1] = 0;
-    val[2] = 0;
-}
 Scalar::Scalar(double b, double g, double r)
 {
     val[0] = b;
@@ -35,241 +26,114 @@ Scalar::Scalar(double b, double g, double r)
     val[2] = r;
 }
 
-//构造函数
+Scalar::Scalar(uint8_t *bgr)
+{
+    val[0] = bgr[0];
+    val[1] = bgr[1];
+    val[2] = bgr[2];
+}
+
+void Scalar::operator += (const Scalar &a)
+{
+    val[0] += a.val[0];
+    val[1] += a.val[1];
+    val[2] += a.val[2];
+}
+
+void Scalar::operator /= (double a)
+{
+    val[0] /= a;
+    val[1] /= a;
+    val[2] /= a;
+}
+
 SharedMatting::SharedMatting()
 {
     kI = 10;
     kC = 5.0;
     kG = 4;  //each unknown p gathers at most kG forground and background samples
 }
-//析构函数
+
 SharedMatting::~SharedMatting()
 {
-    uT.clear();
-    tuples.clear();
-    ftuples.clear();
-
     delete[] unknownIndex;
 }
 
-//载入图像
-void SharedMatting::loadImage(unsigned char *_data, int64_t w, int64_t h)
+void SharedMatting::loadImage(unsigned char *im, unsigned char *trimap, int64_t w, int64_t h)
 {
     height     = h;
     width      = w;
     channels   = 3;
     step       = w * channels;
-    data       = _data;
+    data       = im;
+    m_trimap = trimap;
     unknownIndex  = new int[height * width];
 }
-//载入第三方图像
-void SharedMatting::loadTrimap(unsigned char *data)
-{
-    trimap = data;
-}
 
-void SharedMatting::expandKnown()
+void SharedMatting::expandKnown(unsigned char *alpha)
 {
-    vector<struct labelPoint> vp;
     int kc2 = kC * kC;
-    vp.clear();
-    int s       = width;
-    int c       = 1;
+
+    memcpy(alpha, m_trimap, width * height);
 
     for (int i = 0; i < height; ++i)
     {
         for (int j = 0; j < width; ++j)
         {
-            if (trimap[i * s + j] != 0 && trimap[i * s + j] != 255)
+            if (m_trimap[i * width + j] != 0 && m_trimap[i * width + j] != 255)
             {
-
                 int label = -1;
                 double dmin = 10000.0;
-                bool flag = false;
-                int pb = data[i * step + j * channels];
-                int pg = data[i * step + j * channels + 1];
-                int pr = data[i * step + j * channels + 2];
-                Scalar p = Scalar(pb, pg, pr);
+                Scalar p = Scalar(&data[i * step + j * channels]);
 
+                int i1 = max(0, i - kI);
+                int i2 = min(i + kI, height - 1);
+                int j1 = max(0, j - kI);
+                int j2 = min(j + kI, width - 1);
 
-
-
-                //int i1    = max(0, i - kI);
-                //int i2    = min(i + kI, height - 1);
-                //int j1    = max(0, j - kI);
-                //int j2    = min(j + kI, width - 1);
-                //
-                //for (int k = i1; k <= i2; ++k)
-                //{
-                //  for (int l = j1; l <= j2; ++l)
-                //  {
-                //      int temp = trimap[k * s + l];
-                //      if (temp != 0 && temp != 255)
-                //      {
-                //          continue;
-                //      }
-                //      double dis = dP(Point(i, j), Point(k, l));
-                //      if (dis > dmin)
-                //      {
-                //          continue;
-                //      }
-                //
-                //      int qb = data[k * step + l * channels];
-                //      int qg = data[k * step + l * channels + 1];
-                //      int qr = data[k * step + l * channels + 2];
-                //      Scalar q = Scalar(qb, qg, qr);
-
-                //      double distanceColor = distanceColor2(p, q);
-
-                //      if (distanceColor <= kc2)
-                //      {
-                //          dmin = dis;
-                //          label = temp;
-                //      }
-                //  }
-                //}
-
-                for (int k = 0; (k <= kI) && !flag; ++k)
+                for (int k = i1; k <= i2; ++k)
                 {
-                    int k1 = max(0, i - k);
-                    int k2 = min(i + k, height - 1);
-                    int l1 = max(0, j - k);
-                    int l2 = min(j + k, width - 1);
+                 for (int l = j1; l <= j2; ++l)
+                 {
+                     int temp = m_trimap[k * width + l];
+                     if (temp != 0 && temp != 255)
+                     {
+                         continue;
+                     }
+                     double dis = dP(Point(i, j), Point(k, l));
+                     if (dis > dmin)
+                     {
+                         continue;
+                     }
 
-                    for (int l = k1; (l <= k2) && !flag; ++l)
-                    {
-                        double dis;
-                        double gray;
+                     Scalar q = Scalar(&data[k * step + l * channels]);
+                     double distanceColor = distanceColor2(p, q);
 
-
-                        gray = trimap[l * s + l1];
-                        if (gray == 0 || gray == 255)
-                        {
-                            dis = dP(Point(i, j), Point(l, l1));
-                            if (dis > kI)
-                            {
-                                continue;
-                            }
-                            int qb = data[l * step + l1 * channels];
-                            int qg = data[l * step + l1 * channels + 1];
-                            int qr = data[l * step + l1 * channels + 2];
-                            Scalar q = Scalar(qb, qg, qr);
-
-                            double distanceColor = distanceColor2(p, q);
-                            if (distanceColor <= kc2)
-                            {
-                                flag = true;
-                                label = gray;
-                            }
-                        }
-                        if (flag)
-                        {
-                            break;
-                        }
-
-                        gray = trimap[l * s + l2];
-                        if (gray == 0 || gray == 255)
-                        {
-                            dis = dP(Point(i, j), Point(l, l2));
-                            if (dis > kI)
-                            {
-                                continue;
-                            }
-                            int qb = data[l * step + l2 * channels];
-                            int qg = data[l * step + l2 * channels + 1];
-                            int qr = data[l * step + l2 * channels + 2];
-                            Scalar q = Scalar(qb, qg, qr);
-
-                            double distanceColor = distanceColor2(p, q);
-                            if (distanceColor <= kc2)
-                            {
-                                flag = true;
-                                label = gray;
-                            }
-                        }
-                    }
-
-                    for (int l = l1; (l <= l2) && !flag; ++l)
-                    {
-                        double dis;
-                        double gray;
-
-                        gray = trimap[k1 * s + l];
-                        if (gray == 0 || gray == 255)
-                        {
-                            dis = dP(Point(i, j), Point(k1, l));
-                            if (dis > kI)
-                            {
-                            continue;
-                            }
-                            int qb = data[k1 * step + l * channels];
-                            int qg = data[k1 * step + l * channels + 1];
-                            int qr = data[k1 * step + l * channels + 2];
-                            Scalar q = Scalar(qb, qg, qr);
-
-                            double distanceColor = distanceColor2(p, q);
-                            if (distanceColor <= kc2)
-                            {
-                                flag = true;
-                                label = gray;
-                            }
-                        }
-                        gray = trimap[k2 * s + l];
-                        if (gray == 0 || gray == 255)
-                        {
-                            dis = dP(Point(i, j), Point(k2, l));
-                            if (dis > kI)
-                            {
-                            continue;
-                            }
-                            int qb = data[k2 * step + l * channels];
-                            int qg = data[k2 * step + l * channels + 1];
-                            int qr = data[k2 * step + l * channels + 2];
-                            Scalar q = Scalar(qb, qg, qr);
-
-                            double distanceColor = distanceColor2(p, q);
-                            if (distanceColor <= kc2)
-                            {
-                                flag = true;
-                                label = gray;
-                            }
-                        }
-                    }
+                     if (distanceColor <= kc2)
+                     {
+                         dmin = dis;
+                         label = temp;
+                     }
+                 }
                 }
+
                 if (label != -1)
                 {
-                    struct labelPoint lp;
-                    lp.x = i;
-                    lp.y = j;
-                    lp.label = label;
-                    vp.push_back(lp);
+                    alpha[i * width + j] = label;
                 }
-                else
-                {
-                    Point lp;
-                    lp.x = i;
-                    lp.y = j;
-                    uT.push_back(lp);
-                }
-
             }
         }
     }
 
-    vector<struct labelPoint>::iterator it;
-    for (it = vp.begin(); it != vp.end(); ++it)
-    {
-        int ti = it->x;
-        int tj = it->y;
-        int label = it->label;
-        //cvSet2D(trimap, ti, tj, ScalarAll(label));
-        trimap[ti * s + tj] = label;
-    }
-    vp.clear();
+    // m_trimap = alpha;
+    memcpy(m_trimap, alpha, width * height);
 }
 
 double SharedMatting::comalpha(Scalar c, Scalar f, Scalar b)
 {
+    // 已知：c, f, b
+    // 求解：argmin |c - (a * f + (1 - a) * b)|
+    // 约束：0 <= a <= 1
     double alpha = ((c.val[0] - b.val[0]) * (f.val[0] - b.val[0]) +
                     (c.val[1] - b.val[1]) * (f.val[1] - b.val[1]) +
                     (c.val[2] - b.val[2]) * (f.val[2] - b.val[2]))
@@ -281,10 +145,7 @@ double SharedMatting::comalpha(Scalar c, Scalar f, Scalar b)
 
 double SharedMatting::mP(int i, int j, Scalar f, Scalar b)
 {
-    int bc = data[i * step + j * channels];
-    int gc = data[i * step + j * channels + 1];
-    int rc = data[i * step + j * channels + 2];
-    Scalar c = Scalar(bc, gc, rc);
+    Scalar c = Scalar(&data[i * step + j * channels]);
 
     double alpha = comalpha(c, f, b);
 
@@ -317,8 +178,6 @@ double SharedMatting::nP(int i, int j, Scalar f, Scalar b)
 
 double SharedMatting::eP(int i1, int j1, int i2, int j2)
 {
-    //int flagi = 1, flagj = 1;
-
     double ci = i2 - i1;
     double cj = j2 - j1;
     double z  = sqrt(ci * ci + cj * cj);
@@ -330,10 +189,7 @@ double SharedMatting::eP(int i1, int j1, int i2, int j2)
 
     double result = 0;
 
-    int b = data[i1 * step + j1 * channels];
-    int g = data[i1 * step + j1 * channels + 1];
-    int r = data[i1 * step + j1 * channels + 2];
-    Scalar pre = Scalar(b, g, r);
+    Scalar pre = Scalar(&data[i1 * step + j1 * channels]);
 
     int ti = i1;
     int tj = j1;
@@ -347,10 +203,7 @@ double SharedMatting::eP(int i1, int j1, int i2, int j2)
 
         double z = 1;
 
-        int b = data[i * step + j * channels];
-        int g = data[i * step + j * channels + 1];
-        int r = data[i * step + j * channels + 2];
-        Scalar cur = Scalar(b, g, r);
+        Scalar cur = Scalar(&data[i * step + j * channels]);
 
         if (ti - i > 0 && tj - j == 0)
         {
@@ -371,7 +224,6 @@ double SharedMatting::eP(int i1, int j1, int i2, int j2)
 
         if(abs(ci) >= abs(inci) || abs(cj) >= abs(incj))
             break;
-
     }
 
     return result;
@@ -404,10 +256,7 @@ double SharedMatting::pfP(Point p, vector<Point>& f, vector<Point>& b)
 
 double SharedMatting::aP(int i, int j, double pf, Scalar f, Scalar b)
 {
-    int bc = data[i * step + j * channels];
-    int gc = data[i * step + j * channels + 1];
-    int rc = data[i * step + j * channels + 2];
-    Scalar c = Scalar(bc, gc, rc);
+    Scalar c = Scalar(&data[i * step + j * channels]);
 
     double alpha = comalpha(c, f, b);
 
@@ -421,15 +270,8 @@ double SharedMatting::dP(Point s, Point d)
 
 double SharedMatting::gP(Point p, Point fp, Point bp, double pf)
 {
-    int bc, gc, rc;
-    bc = data[fp.x * step + fp.y * channels];
-    gc = data[fp.x * step + fp.y * channels + 1];
-    rc = data[fp.x * step + fp.y * channels + 2];
-    Scalar f = Scalar(bc, gc, rc);
-    bc = data[bp.x * step + bp.y * channels];
-    gc = data[bp.x * step + bp.y * channels + 1];
-    rc = data[bp.x * step + bp.y * channels + 2];
-    Scalar b = Scalar(bc, gc, rc);
+    Scalar f = Scalar(&data[fp.x * step + fp.y * channels]);
+    Scalar b = Scalar(&data[bp.x * step + bp.y * channels]);
 
     double tn = pow(nP(p.x, p.y, f, b), 3);
     double ta = pow(aP(p.x, p.y, pf, f, b), 2);
@@ -439,36 +281,11 @@ double SharedMatting::gP(Point p, Point fp, Point bp, double pf)
     return tn * ta * tf * tb;
 }
 
-double SharedMatting::gP(Point p, Point fp, Point bp, double dpf, double pf)
-{
-    int bc, gc, rc;
-    bc = data[fp.x * step + fp.y * channels];
-    gc = data[fp.x * step + fp.y * channels + 1];
-    rc = data[fp.x * step + fp.y * channels + 2];
-    Scalar f = Scalar(bc, gc, rc);
-    bc = data[bp.x * step + bp.y * channels];
-    gc = data[bp.x * step + bp.y * channels + 1];
-    rc = data[bp.x * step + bp.y * channels + 2];
-    Scalar b = Scalar(bc, gc, rc);
-
-
-    double tn = pow(nP(p.x, p.y, f, b), 3);
-    double ta = pow(aP(p.x, p.y, pf, f, b), 2);
-    double tf = dpf;
-    double tb = pow(dP(p, bp), 4);
-
-    return tn * ta * tf * tb;
-}
-
 double SharedMatting::sigma2(Point p)
 {
     int xi = p.x;
     int yj = p.y;
-    int bc, gc, rc;
-    bc = data[xi * step + yj * channels];
-    gc = data[xi * step + yj * channels + 1];
-    rc = data[xi * step + yj * channels + 2];
-    Scalar pc = Scalar(bc, gc, rc);
+    Scalar pc = Scalar(&data[xi * step + yj * channels]);
 
     int i1 = max(0, xi - 2);
     int i2 = min(xi + 2, height - 1);
@@ -482,17 +299,13 @@ double SharedMatting::sigma2(Point p)
     {
         for (int j = j1; j <= j2; ++j)
         {
-            int bc, gc, rc;
-            bc = data[i * step + j * channels];
-            gc = data[i * step + j * channels + 1];
-            rc = data[i * step + j * channels + 2];
-            Scalar temp = Scalar(bc, gc, rc);
+            Scalar temp = Scalar(&data[i * step + j * channels]);
             result += distanceColor2(pc, temp);
             ++num;
         }
     }
 
-    return result / (num + 1e-10);
+    return result / num;
 }
 
 double SharedMatting::distanceColor2(Scalar cs1, Scalar cs2)
@@ -530,7 +343,7 @@ void SharedMatting::sample(Point p, std::vector<Point> &f, std::vector<Point> &b
             {
                 break;
             }
-            int gray = trimap[ti * width + tj];
+            int gray = m_trimap[ti * width + tj];
 
             if (!flagf && gray == 255)
             {
@@ -552,99 +365,27 @@ void SharedMatting::sample(Point p, std::vector<Point> &f, std::vector<Point> &b
     }
 }
 
-void SharedMatting::Sample(std::vector<vector<Point> > &F, std::vector<vector<Point> > &B)
-{
-    int   a,b,i;
-    int   x,y,p,q;
-    int   w,h,gray;
-    int   angle;
-    double z,ex,ey,t,step;
-    vector<Point>::iterator iter;
-
-    a=360/kG;
-    b=1.7f*a/9;
-    F.clear();
-    B.clear();
-    w=width;
-    h=height;
-    for(iter=uT.begin();iter!=uT.end();++iter)
-    {
-        vector<Point> fPts,bPts;
-
-        x=iter->x;
-        y=iter->y;
-        angle=(x+y)*b % a;
-        for(i=0;i<kG;++i)
-        {
-            bool f1(false),f2(false);
-
-            z=(angle+i*a)/180.0f*3.1415926f;
-            ex=sin(z);
-            ey=cos(z);
-            step=min(1.0f/(abs(ex)+1e-10f),
-                1.0f/(abs(ey)+1e-10f));
-
-            for(t=0;;t+=step)
-            {
-                p=(int)(x+ex*t+0.5f);
-                q=(int)(y+ey*t+0.5f);
-                if(p<0 || p>=h || q<0 || q>=w)
-                    break;
-
-                gray=trimap[p * width + q];
-                if(!f1 && gray<50)
-                {
-                    Point pt = Point(p, q);
-                    bPts.push_back(pt);
-                    f1=true;
-                }
-                else
-                    if(!f2 && gray>200)
-                    {
-                        Point pt = Point(p, q);
-                        fPts.push_back(pt);
-                        f2=true;
-                    }
-                    else
-                        if(f1 && f2)
-                            break;
-            }
-        }
-
-        F.push_back(fPts);
-        B.push_back(bPts);
-    }
-}
-
 void SharedMatting::gathering()
 {
     vector<Point> f;
     vector<Point> b;
-    vector<Point>::iterator it;
     vector<Point>::iterator it1;
     vector<Point>::iterator it2;
 
-    vector<vector<Point> > F,B;
-
-    Sample(F, B);
-
     int index = 0;
-    double a;
-    int size = uT.size();
 
-    for (int m = 0; m < size; ++m)
+    for(int i = 0; i < height; i++)
+    for(int j = 0; j < width; j++)
     {
-        int i = uT[m].x;
-        int j = uT[m].y;
+        if(m_trimap[i * width + j] == 0 || m_trimap[i * width + j] == 255)
+            continue;
 
-        /*f.clear();
-        b.clear();*/
+        f.clear();
+        b.clear();
+        sample(Point(i, j), f, b);
 
-        //sample(Point(i, j), f, b);
+        double pfp = pfP(Point(i, j), f, b);
 
-        /*double pfp = pfP(Point(i, j), f, b);*/
-
-        double pfp = pfP(Point(i, j), F[m], B[m]);
         double gmin = 1.0e10;
 
         Point tf;
@@ -653,17 +394,16 @@ void SharedMatting::gathering()
         bool flag = false;
         bool first = true;
 
-        for (it1 = F[m].begin(); it1 != F[m].end(); ++it1)
+        for (it1 = f.begin(); it1 != f.end(); ++it1)
         {
-            double dpf = dP(Point(i, j), *(it1));
-            for (it2 = B[m].begin(); it2 < B[m].end(); ++it2)
+            for (it2 = b.begin(); it2 < b.end(); ++it2)
             {
-                double gp = gP(Point(i, j), *(it1), *(it2), dpf, pfp);
+                double gp = gP(Point(i, j), *(it1), *(it2), pfp);
                 if (gp < gmin)
                 {
                     gmin = gp;
-                    tf   = *(it1);
-                    tb   = *(it2);
+                    tf   = *it1;
+                    tb   = *it2;
                     flag = true;
                 }
             }
@@ -673,16 +413,9 @@ void SharedMatting::gathering()
         st.flag = -1;
         if (flag)
         {
-            int bc, gc, rc;
-            bc = data[tf.x * step +  tf.y * channels];
-            gc = data[tf.x * step +  tf.y * channels + 1];
-            rc = data[tf.x * step +  tf.y * channels + 2];
             st.flag   = 1;
-            st.f      = Scalar(bc, gc, rc);
-            bc = data[tb.x * step +  tb.y * channels];
-            gc = data[tb.x * step +  tb.y * channels + 1];
-            rc = data[tb.x * step +  tb.y * channels + 2];
-            st.b      = Scalar(bc, gc, rc);
+            st.f      = Scalar(&data[tf.x * step +  tf.y * channels]);
+            st.b      = Scalar(&data[tb.x * step +  tb.y * channels]);
             st.sigmaf = sigma2(tf);
             st.sigmab = sigma2(tb);
         }
@@ -691,31 +424,24 @@ void SharedMatting::gathering()
         unknownIndex[i * width + j] = index;
         ++index;
     }
-    f.clear();
-    b.clear();
 }
 
 void SharedMatting::refineSample(unsigned char *alpha)
 {
-    ftuples.resize(width * height + 1);
+    ftuples.resize(width * height);
     for (int i = 0; i < height; ++i)
     {
         for (int j = 0; j < width; ++j)
         {
-            int b, g, r;
-            b = data[i * step +  j * channels];
-            g = data[i * step +  j * channels + 1];
-            r = data[i * step +  j * channels + 2];
-            Scalar c = Scalar(b, g, r);
+            Scalar c = Scalar(&data[i * step +  j * channels]);
             int indexf = i * width + j;
-            int gray = trimap[i * width + j];
+            int gray = m_trimap[i * width + j];
             if (gray == 0)
             {
                 ftuples[indexf].f = c;
                 ftuples[indexf].b = c;
                 ftuples[indexf].alphar = 0;
                 ftuples[indexf].confidence = 1;
-                alpha[i * width + j] = 0;
             }
             else if (gray == 255)
             {
@@ -723,28 +449,27 @@ void SharedMatting::refineSample(unsigned char *alpha)
                 ftuples[indexf].b = c;
                 ftuples[indexf].alphar = 1;
                 ftuples[indexf].confidence = 1;
-                alpha[i * width + j] = 255;
             }
         }
     }
-    vector<Point>::iterator it;
-    for (it = uT.begin(); it != uT.end(); ++it)
+    for(int xi = 0; xi < height; xi++)
+    for(int yj = 0; yj < width; yj++)
     {
-        int xi = it->x;
-        int yj = it->y;
+        if(m_trimap[xi * width + yj] == 0 || m_trimap[xi * width + yj] == 255)
+            continue;
         int i1 = max(0, xi - 5);
         int i2 = min(xi + 5, height - 1);
         int j1 = max(0, yj - 5);
         int j2 = min(yj + 5, width - 1);
 
         double minvalue[3] = {1e10, 1e10, 1e10};
-        Point * p = new Point[3];
+        Point p[3];
         int num = 0;
         for (int k = i1; k <= i2; ++k)
         {
             for (int l = j1; l <= j2; ++l)
             {
-                int temp = trimap[k * width + l];
+                int temp = m_trimap[k * width + l];
 
                 if (temp == 0 || temp == 255)
                 {
@@ -760,7 +485,7 @@ void SharedMatting::refineSample(unsigned char *alpha)
 
                 double m  = mP(xi, yj, t.f, t.b);
 
-                if (m > minvalue[2])
+                if (m >= minvalue[2])
                 {
                     continue;
                 }
@@ -776,9 +501,6 @@ void SharedMatting::refineSample(unsigned char *alpha)
                     minvalue[0] = m;
                     p[0].x = k;
                     p[0].y = l;
-
-                    ++num;
-
                 }
                 else if (m < minvalue[1])
                 {
@@ -788,62 +510,41 @@ void SharedMatting::refineSample(unsigned char *alpha)
                     minvalue[1] = m;
                     p[1].x = k;
                     p[1].y = l;
-
-                    ++num;
                 }
                 else if (m < minvalue[2])
                 {
                     minvalue[2] = m;
                     p[2].x = k;
                     p[2].y = l;
-
-                    ++num;
                 }
+                ++num;
             }
         }
 
         num = min(num, 3);
 
-        double fb = 0;
-        double fg = 0;
-        double fr = 0;
-        double bb = 0;
-        double bg = 0;
-        double br = 0;
+        Scalar fc;
+        Scalar bc;
         double sf = 0;
         double sb = 0;
 
         for (int k = 0; k < num; ++k)
         {
             int i  = unknownIndex[p[k].x * width + p[k].y];
-            fb += tuples[i].f.val[0];
-            fg += tuples[i].f.val[1];
-            fr += tuples[i].f.val[2];
-            bb += tuples[i].b.val[0];
-            bg += tuples[i].b.val[1];
-            br += tuples[i].b.val[2];
+            fc += tuples[i].f;
+            bc += tuples[i].b;
             sf += tuples[i].sigmaf;
             sb += tuples[i].sigmab;
         }
 
-        fb /= (num + 1e-10);
-        fg /= (num + 1e-10);
-        fr /= (num + 1e-10);
-        bb /= (num + 1e-10);
-        bg /= (num + 1e-10);
-        br /= (num + 1e-10);
+        fc /= (num + 1e-10);
+        bc /= (num + 1e-10);
         sf /= (num + 1e-10);
         sb /= (num + 1e-10);
 
-        Scalar fc = Scalar(fb, fg, fr);
-        Scalar bc = Scalar(bb, bg, br);
-        int b, g, r;
-        b = data[xi * step +  yj * channels];
-        g = data[xi * step +  yj * channels + 1];
-        r = data[xi * step +  yj * channels + 2];
-        Scalar pc = Scalar(b, g, r);
-        double   df = distanceColor2(pc, fc);
-        double   db = distanceColor2(pc, bc);
+        Scalar pc = Scalar(&data[xi * step +  yj * channels]);
+        double df = distanceColor2(pc, fc);
+        double db = distanceColor2(pc, bc);
         Scalar tf = fc;
         Scalar tb = bc;
 
@@ -869,28 +570,27 @@ void SharedMatting::refineSample(unsigned char *alpha)
         ftuples[index].b = bc;
 
         ftuples[index].alphar = max(0.0, min(1.0,comalpha(pc, fc, bc)));
-        //cvSet2D(matte, xi, yj, ScalarAll(ftuples[index].alphar * 255));
     }
     tuples.clear();
 }
 
 void SharedMatting::localSmooth(unsigned char *alpha)
 {
-    vector<Point>::iterator it;
+    // http://www.ruanyifeng.com/blog/2012/11/gaussian_blur.html
     double sig2 = 100.0 / (9 * 3.1415926);
     double r = 3 * sqrt(sig2);
-    for (it = uT.begin(); it != uT.end(); ++it)
+    for(int xi = 0; xi < height; xi++)
+    for(int yj = 0; yj < width; yj++)
     {
-        int xi = it->x;
-        int yj = it->y;
+        if(m_trimap[xi * width + yj] == 0 || m_trimap[xi * width + yj] == 255)
+            continue;
 
         int i1 = max(0, int(xi - r));
         int i2 = min(int(xi + r), height - 1);
         int j1 = max(0, int(yj - r));
         int j2 = min(int(yj + r), width - 1);
 
-        int indexp = xi * width + yj;
-        Ftuple ptuple = ftuples[indexp];
+        Ftuple ptuple = ftuples[xi * width + yj];
 
         Scalar wcfsumup = Scalar();
         Scalar wcbsumup = Scalar();
@@ -905,8 +605,7 @@ void SharedMatting::localSmooth(unsigned char *alpha)
         {
             for (int l = j1; l <= j2; ++l)
             {
-                int indexq = k * width + l;
-                Ftuple qtuple = ftuples[indexq];
+                Ftuple qtuple = ftuples[k * width + l];
 
                 double d = dP(Point(xi, yj), Point(k, l));
 
@@ -918,7 +617,7 @@ void SharedMatting::localSmooth(unsigned char *alpha)
                 double wc;
                 if (d == 0)
                 {
-                    wc = exp(-(d * d) / sig2) * qtuple.confidence;
+                    wc = qtuple.confidence;
                 }
                 else
                 {
@@ -941,7 +640,7 @@ void SharedMatting::localSmooth(unsigned char *alpha)
 
                 double delta = 0;
                 double wa;
-                if (trimap[k * width + l] == 0 || trimap[k * width + l] == 255)
+                if (m_trimap[k * width + l] == 0 || m_trimap[k * width + l] == 255)
                 {
                     delta = 1;
                 }
@@ -951,11 +650,7 @@ void SharedMatting::localSmooth(unsigned char *alpha)
             }
         }
 
-        int b, g, r;
-        b = data[xi * step +  yj* channels];
-        g = data[xi * step +  yj * channels + 1];
-        r = data[xi * step +  yj * channels + 2];
-        Scalar cp = Scalar(b, g, r);
+        Scalar cp = Scalar(&data[xi * step +  yj * channels]);
         Scalar fp;
         Scalar bp;
 
@@ -991,7 +686,7 @@ void SharedMatting::solveAlpha(unsigned char *alpha)
     //expandKnown()
     start = clock();
     cout << "Expanding...";
-    expandKnown();
+    expandKnown(alpha);
     cout << "    over!!!" << endl;
     finish = clock();
     cout <<  double(finish - start) / (CLOCKS_PER_SEC * 2.5) << endl;
